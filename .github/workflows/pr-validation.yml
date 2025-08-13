@@ -3,27 +3,73 @@ name: PR Validation
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+  issues: write
+  contents: read
 
 jobs:
-  validate:
+  # -----------------
+  # 1) Python CI Job
+  # -----------------
+  python-ci:
+    name: Python CI
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install flake8 pytest
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Lint with flake8
-      run: flake8 .
+      - name: Lint with flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
 
-    - name: Run tests with pytest
-      run: pytest
+      - name: Check formatting with black
+        run: black --check .
+
+      - name: Run tests
+        run: pytest
+
+  # -----------------
+  # 2) PR Policy Job
+  # -----------------
+  pr-policy:
+    name: PR Policy Enforcement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title/description for ticket ID
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const number = context.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: number
+            });
+
+            const ticketPattern = /TASK-\d+/;
+            if (!ticketPattern.test(pr.title) && !ticketPattern.test(pr.body)) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: number,
+                body: "🚫 **PR must include a ticket ID like `TASK-123` in the title or description.**"
+              });
+              core.setFailed("Missing ticket ID");
+            } else {
+              console.log("✅ Ticket ID found");
+            }

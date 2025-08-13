@@ -101,6 +101,6 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
-            -Dsonar.projectKey=cloudtechsneha_pr-validation-demo
+            -Dsonar.projectKey=cloudtechsneha_pr-validation
             -Dsonar.organization=cloudtechsneha
             -Dsonar.python.version=3.10

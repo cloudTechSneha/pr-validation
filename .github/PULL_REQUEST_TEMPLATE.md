@@ -9,3 +9,5 @@ Example ticket ID: TASK-123
 - [ ] Linting passed
 - [ ] Linked a ticket ID in title/description
 - [ ] Requested reviewers
+- [ ] **SonarCloud analysis passed** (no new critical/blocker issues)
+- [ ] Reviewed SonarCloud code smells & vulnerabilities

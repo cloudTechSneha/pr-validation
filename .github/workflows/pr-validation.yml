@@ -75,9 +75,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 10. Send notification to Teams or Email
-      - name: Notify Teams
-        uses: Ilshidur/action-slack@v2
+      
         with:
           webhook_url: ${{ secrets.TEAMS_WEBHOOK }}
           message: "PR #${{ github.event.pull_request.number }} passed all automated validations ✅"

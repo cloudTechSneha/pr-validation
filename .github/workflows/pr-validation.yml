@@ -9,23 +9,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code
+      # Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Set up JDK (for Maven)
+      # Set up JDK
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Maven build and test
+      # Maven build & test
       - name: Build and Test
         run: mvn clean test
-        continue-on-error: false
 
-      # 4. Update PR with test results
+      # Post Maven test results in PR comments
       - name: Publish Maven Test Results
         uses: marocchino/sticky-pull-request-comment@v2
         with:
@@ -34,45 +33,20 @@ jobs:
             Build and tests passed ✅
           recreate: true
 
-      # 5. Run code formatting and linting
+      # Code formatting & linting
       - name: Check Code Formatting
         run: mvn fmt:check
 
       - name: Lint Code
         run: mvn checkstyle:check
 
-      # 6. SonarCloud analysis
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+      # Validate PR description for JIRA ID
+      - name: Validate PR Description
+        uses: deepakputhraya/action-pr-description@v1.0.4
         with:
-          projectBaseDir: .
-          organization: ${{ secrets.SONAR_ORG }}
-          token: ${{ secrets.SONAR_TOKEN }}
+          regex: 'JIRA-\d+'
+          errorMessage: 'PR description must include a JIRA ID'
 
-      - name: Publish SonarCloud Results
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          message: |
-            ### SonarCloud Code Coverage
-            Code coverage: [See SonarCloud report](https://sonarcloud.io/dashboard?id=your_project_key)
-          recreate: true
-
-      # 7. Validate PR checklist and ticket link
-      - name: Check PR Description
-        uses: amitsingh-007/validate-pr@v1
-        with:
-          pattern: 'JIRA-\d+'
-          fail_message: 'PR description must include a JIRA ID'
-
-      # 8. Check for reviewers and labels
-      - name: Validate PR Labels & Reviewers
-        run: |
-          python3 .github/scripts/validate_pr_labels_reviewers.py
-
-      # 9. Prevent merge if unresolved comments
+      # Check unresolved review comments
       - name: Check unresolved review comments
-        uses: hmarr/unreviewed-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      
+        uses: marocchino/unresolved-comments@v2

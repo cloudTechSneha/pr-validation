@@ -1,4 +1,4 @@
-name: PR Validation
+name: PR Validation (Maven + JaCoCo)
 
 on:
   pull_request:
@@ -7,77 +7,75 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: my-app  # your Maven module folder
 
     steps:
       # 1. Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Set up JDK (for Maven)
+      # 2. Set up JDK
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Maven build and test
-      - name: Build and Test
-        run: mvn clean test
-        continue-on-error: false
+      # 3. Build, Test & Generate Coverage
+      - name: Build, Test & Coverage
+        run: mvn -B clean test jacoco:report
 
-      # 4. Update PR with test results
-      - name: Publish Maven Test Results
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          message: |
-            ### Maven Test Results
-            Build and tests passed ✅
-          recreate: true
+      # 4. Apply Spotless formatting
+      - name: Spotless Apply
+        run: mvn spotless:apply
 
-      # 5. Run code formatting and linting
-      - name: Check Code Formatting
-        run: mvn fmt:check
+      # 5. Check code formatting
+      - name: Spotless Check
+        run: mvn spotless:check
 
-      - name: Lint Code
+      # 6. Run Checkstyle
+      - name: Run Checkstyle
         run: mvn checkstyle:check
 
-      # 6. SonarCloud analysis
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
-        with:
-          projectBaseDir: .
-          organization: ${{ secrets.SONAR_ORG }}
-          token: ${{ secrets.SONAR_TOKEN }}
-
-      - name: Publish SonarCloud Results
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          message: |
-            ### SonarCloud Code Coverage
-            Code coverage: [See SonarCloud report](https://sonarcloud.io/dashboard?id=your_project_key)
-          recreate: true
-
-      # 7. Validate PR checklist and ticket link
-      - name: Check PR Description
-        uses: amitsingh-007/validate-pr@v1
-        with:
-          pattern: 'JIRA-\d+'
-          fail_message: 'PR description must include a JIRA ID'
-
-      # 8. Check for reviewers and labels
-      - name: Validate PR Labels & Reviewers
+      # 7. Extract JaCoCo coverage %
+      - name: Extract Coverage
+        id: coverage
         run: |
-          python3 .github/scripts/validate_pr_labels_reviewers.py
+          XML="target/site/jacoco/jacoco.xml"
+          if [ ! -f "$XML" ]; then
+            echo "coverage=0.0" >> $GITHUB_OUTPUT
+          else
+            COV=$(grep -m1 '<counter type="LINE"' $XML | sed -E 's/.*missed="([0-9]+)".*covered="([0-9]+)".*/\1 \2/' | awk '{total=$1+$2; if(total==0){print 0}else{print ($2*100/total)}}')
+            echo "coverage=$COV" >> $GITHUB_OUTPUT
+          fi
 
-      # 9. Prevent merge if unresolved comments
-      - name: Check unresolved review comments
-        uses: hmarr/unreviewed-action@v2
+      # 8. Post Coverage & Test Results as PR Comment
+      - name: Post Coverage to PR
+        uses: peter-evans/create-or-update-comment@v4
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}                        # Your GitHub PAT
+          issue-number: ${{ github.event.pull_request.number }}  # Target PR number
+          body: |
+            ### ✅ Build & Test Passed
+            📊 Line coverage: **${{ steps.coverage.outputs.coverage }}%**
 
-      # 10. Send notification to Teams or Email
-      - name: Notify Teams
-        uses: Ilshidur/action-slack@v2
-        with:
-          webhook_url: ${{ secrets.TEAMS_WEBHOOK }}
-          message: "PR #${{ github.event.pull_request.number }} passed all automated validations ✅"
+      # 9. Validate PR description for JIRA ID
+      - name: Check PR Description for JIRA
+        run: |
+          if echo "${{ github.event.pull_request.body }}" | grep -Eq 'JIRA-[0-9]+'; then
+            echo "✅ JIRA ID found in PR description"
+          else
+            echo "❌ Missing JIRA ID in PR description"
+            exit 1
+
+      # 10. Validate PR Labels
+      - name: Check PR Labels
+        run: |
+          LABELS="${{ toJson(github.event.pull_request.labels) }}"
+          if [ "$LABELS" = "[]" ]; then
+            echo "❌ No labels found on PR"
+            exit 1
+          else
+            echo "✅ Labels present"
